@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My News Dashboard</title>
+<style>
+  :root {
+    --bg: #f5f5f0;
+    --surface: #ffffff;
+    --border: #d0d0c8;
+    --text: #1a1a1a;
+    --muted: #666660;
+    --accent: #c0392b;
+    --tab-active-bg: #1a1a1a;
+    --tab-active-text: #f5f5f0;
+    --font-mono: 'Courier New', Courier, monospace;
+    --font-serif: Georgia, 'Times New Roman', serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-serif);
+    font-size: 15px;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  /* ── Header ── */
+  header {
+    border-bottom: 2px solid var(--text);
+    padding: 14px 20px 10px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  header h1 {
+    font-family: var(--font-mono);
+    font-size: 1.05rem;
+    font-weight: normal;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  #meta {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  #refresh-btn {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 3px 10px;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    transition: background 0.15s, color 0.15s;
+  }
+  #refresh-btn:hover { background: var(--text); color: var(--bg); }
+
+  /* ── Tabs ── */
+  nav {
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-wrap: wrap;
+    padding: 0 20px;
+    background: var(--surface);
+  }
+
+  .tab-btn {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    padding: 10px 14px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    color: var(--muted);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: color 0.1s;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active {
+    color: var(--text);
+    border-bottom-color: var(--accent);
+  }
+
+  /* ── Main layout ── */
+  main {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 24px 20px;
+  }
+
+  .tab-panel { display: none; }
+  .tab-panel.active { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; }
+
+  /* ── Feed card ── */
+  .feed-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+  }
+
+  .feed-header {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .feed-name {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    font-weight: bold;
+  }
+
+  .feed-count {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    color: var(--muted);
+  }
+
+  .feed-items { list-style: none; }
+
+  .feed-item {
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .feed-item:last-child { border-bottom: none; }
+
+  .feed-item a {
+    color: var(--text);
+    text-decoration: none;
+    font-size: 0.88rem;
+    line-height: 1.4;
+    display: block;
+  }
+  .feed-item a:hover { color: var(--accent); }
+
+  .feed-item-date {
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    color: var(--muted);
+    margin-top: 3px;
+  }
+
+  /* ── States ── */
+  .feed-loading, .feed-error, .feed-empty {
+    padding: 18px 14px;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--muted);
+  }
+  .feed-error { color: var(--accent); }
+
+  /* ── Spinner ── */
+  .spinner {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border: 1.5px solid var(--border);
+    border-top-color: var(--muted);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Timestamp ── */
+  #last-updated { white-space: nowrap; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>News Dashboard</h1>
+  <div id="meta">
+    <span id="last-updated">—</span>
+    <button id="refresh-btn" onclick="loadAll()">↺ Refresh</button>
+  </div>
+</header>
+
+<nav id="tabs"></nav>
+
+<main id="main"></main>
+
+<script>
+// ── Config ──────────────────────────────────────────────────────────────────
+
+const PROXY = 'https://api.rss2json.com/v1/api.json?rss_url=';
+const MAX_ITEMS = 10;
+
+const CATEGORIES = [
+  {
+    id: 'progressive',
+    label: 'Progressive',
+    feeds: [
+      { name: 'Democracy Now!',  url: 'https://www.democracynow.org/democracynow.rss' },
+      { name: 'The Intercept',   url: 'https://theintercept.com/feed/?rss' },
+      { name: 'Mother Jones',    url: 'https://www.motherjones.com/feed/' },
+      { name: 'In These Times',  url: 'https://inthesetimes.com/feed' },
+    ]
+  },
+  {
+    id: 'library',
+    label: 'Library World',
+    feeds: [
+      { name: 'ALA News',          url: 'https://www.ala.org/rss/news' },
+      { name: 'AALL Spectrum',     url: 'https://aallspectrum.aallnet.org/feed/' },
+      { name: 'Library Journal',   url: 'https://www.libraryjournal.com/rss' },
+      { name: 'Krafty Librarian',  url: 'https://www.kraftylibrarian.com/feed/' },
+    ]
+  },
+  {
+    id: 'legal',
+    label: 'Legal News',
+    feeds: [
+      { name: 'SCOTUSblog',     url: 'https://www.scotusblog.com/feed/' },
+      { name: 'TaxProf Blog',   url: 'https://taxprof.typepad.com/taxprof_blog/atom.xml' },
+      { name: 'Above the Law',  url: 'https://abovethelaw.com/feed/' },
+    ]
+  },
+  {
+    id: 'legaltech',
+    label: 'Legal Tech',
+    feeds: [
+      { name: 'Artificial Lawyer', url: 'https://www.artificiallawyer.com/feed/' },
+      { name: 'LawSites',          url: 'https://www.lawsitesblog.com/feed' },
+      { name: 'LLRX',              url: 'https://www.llrx.com/feed/' },
+    ]
+  },
+  {
+    id: 'houston',
+    label: 'Houston',
+    feeds: [
+      { name: 'Houston Chronicle',   url: 'https://www.houstonchronicle.com/rss/feed/News-1059.php' },
+      { name: 'Houston Public Media', url: 'https://www.houstonpublicmedia.org/feed/' },
+      { name: 'Houston Press',       url: 'https://www.houstonpress.com/rss.xml' },
+    ]
+  },
+  {
+    id: 'texas',
+    label: 'Texas',
+    feeds: [
+      { name: 'Texas Tribune',          url: 'https://www.texastribune.org/feed/' },
+      { name: 'DMN Texas Politics',     url: 'https://www.dallasnews.com/arc/outboundfeeds/rss/category/news/politics/' },
+      { name: 'KUT Austin',             url: 'https://www.kut.org/rss.xml' },
+    ]
+  },
+];
+
+// ── Build DOM ────────────────────────────────────────────────────────────────
+
+function buildUI() {
+  const tabsEl = document.getElementById('tabs');
+  const mainEl = document.getElementById('main');
+
+  CATEGORIES.forEach((cat, i) => {
+    // Tab button
+    const btn = document.createElement('button');
+    btn.className = 'tab-btn' + (i === 0 ? ' active' : '');
+    btn.textContent = cat.label;
+    btn.dataset.tab = cat.id;
+    btn.onclick = () => switchTab(cat.id);
+    tabsEl.appendChild(btn);
+
+    // Panel
+    const panel = document.createElement('div');
+    panel.className = 'tab-panel' + (i === 0 ? ' active' : '');
+    panel.id = 'panel-' + cat.id;
+
+    cat.feeds.forEach(feed => {
+      const card = document.createElement('div');
+      card.className = 'feed-card';
+      card.id = 'card-' + slugify(feed.name);
+      card.innerHTML = `
+        <div class="feed-header">
+          <span class="feed-name">${esc(feed.name)}</span>
+          <span class="feed-count" id="count-${slugify(feed.name)}"></span>
+        </div>
+        <div class="feed-body" id="body-${slugify(feed.name)}">
+          <div class="feed-loading"><span class="spinner"></span>Loading…</div>
+        </div>
+      `;
+      panel.appendChild(card);
+    });
+
+    mainEl.appendChild(panel);
+  });
+}
+
+function switchTab(id) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === id));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + id));
+}
+
+// ── Fetch feeds ──────────────────────────────────────────────────────────────
+
+async function fetchFeed(feed) {
+  const slug = slugify(feed.name);
+  const bodyEl = document.getElementById('body-' + slug);
+  const countEl = document.getElementById('count-' + slug);
+
+  try {
+    const res = await fetch(PROXY + encodeURIComponent(feed.url) + `&count=${MAX_ITEMS}`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+
+    if (data.status !== 'ok' || !data.items?.length) {
+      bodyEl.innerHTML = '<div class="feed-empty">No items found.</div>';
+      countEl.textContent = '';
+      return;
+    }
+
+    const items = data.items.slice(0, MAX_ITEMS);
+    countEl.textContent = items.length + ' items';
+
+    const ul = document.createElement('ul');
+    ul.className = 'feed-items';
+
+    items.forEach(item => {
+      const li = document.createElement('li');
+      li.className = 'feed-item';
+      const date = item.pubDate ? formatDate(item.pubDate) : '';
+      li.innerHTML = `
+        <a href="${esc(item.link)}" target="_blank" rel="noopener">${esc(item.title)}</a>
+        ${date ? `<div class="feed-item-date">${date}</div>` : ''}
+      `;
+      ul.appendChild(li);
+    });
+
+    bodyEl.innerHTML = '';
+    bodyEl.appendChild(ul);
+
+  } catch (err) {
+    bodyEl.innerHTML = `<div class="feed-error">Failed to load — ${esc(err.message)}</div>`;
+    countEl.textContent = '';
+  }
+}
+
+async function loadAll() {
+  // Reset all to loading state
+  CATEGORIES.forEach(cat => {
+    cat.feeds.forEach(feed => {
+      const slug = slugify(feed.name);
+      const bodyEl = document.getElementById('body-' + slug);
+      if (bodyEl) bodyEl.innerHTML = '<div class="feed-loading"><span class="spinner"></span>Loading…</div>';
+      const countEl = document.getElementById('count-' + slug);
+      if (countEl) countEl.textContent = '';
+    });
+  });
+
+  document.getElementById('last-updated').textContent = 'Refreshing…';
+
+  const allFeeds = CATEGORIES.flatMap(c => c.feeds);
+  await Promise.allSettled(allFeeds.map(fetchFeed));
+
+  const now = new Date();
+  document.getElementById('last-updated').textContent =
+    'Updated ' + now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+// ── Utilities ────────────────────────────────────────────────────────────────
+
+function slugify(str) {
+  return str.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+function esc(str) {
+  if (!str) return '';
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function formatDate(dateStr) {
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d)) return '';
+    const now = new Date();
+    const diffMs = now - d;
+    const diffH = diffMs / 36e5;
+    if (diffH < 1) return Math.round(diffMs / 60000) + 'm ago';
+    if (diffH < 24) return Math.round(diffH) + 'h ago';
+    if (diffH < 48) return 'Yesterday';
+    return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  } catch { return ''; }
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+
+buildUI();
+loadAll();
+</script>
+</body>
+</html>
